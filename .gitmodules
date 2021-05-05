@@ -1,0 +1,4 @@
+[submodule "MCP9800"]
+	path = MCP9800
+	url = git@github.com:ATM-HSW/MCP9800.git
+	branch = main
