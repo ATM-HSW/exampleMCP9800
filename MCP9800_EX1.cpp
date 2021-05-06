@@ -1,57 +1,72 @@
 /*----------------------------------------------------------------------*
  * Example sketch for Microchip MCP9800/1/2/3 2-Wire High-Accuracy      *
  * Temperature Sensors. Demonstrates reading of ambient temperature     *
- * in Celsius and Fahrenheit, conversion to floating-point,             *
- * changing device options via the Cofiguration register,               *
+ * in Celsius, changing device options via the configuration register   *
  * and changing the Limit-Set and Hysteresis registers.                 *
  *                                                                      *
  * Jack Christensen 28Aug2013                                           *
+ * Dr.Olaf Hagendorf 05.2021                                            *
  *                                                                      *
  * Tested with Arduino 1.8.5 and an Arduino Uno.                        *
+ * ported to and tested with Mbed OS 6.9                                *
  *                                                                      *
  * This work is licensed under CC BY-SA 4.0,                            *
  * http://creativecommons.org/licenses/by-sa/4.0/                       *
  *----------------------------------------------------------------------*/ 
- 
-#include <MCP9800.h>      // http://github.com/JChristensen/MCP9800
-#include <Streaming.h>    // http://arduiniana.org/libraries/streaming/
+#include "mbed.h" 
+#include "MCP9800.h"      // http://github.com/JChristensen/MCP9800
+                          // https://github.com/ATM-HSW/MCP9800
 
+I2C i2c(I2C_SDA , I2C_SCL );
 MCP9800 mySensor;
 
-void setup()
-{
-    Serial.begin(115200);
-    delay(1000);
-    Serial << F( "\n" __FILE__ " " __DATE__ " " __TIME__ "\n" );
-
-    mySensor.begin();        // initialize the hardware
-    displayRegs();           // print the initial register values
-    Serial << endl;
-
-    mySensor.writeConfig(ADC_RES_12BITS);       // max resolution, 0.0625 °C
-    mySensor.writeTempC2(HYSTERESIS, 0 * 2);    // freezing
-    mySensor.writeTempC2(LIMITSET, 100 * 2);    // boiling
-}
-
-void loop()
-{
-    delay(2000);
-    displayRegs();
-}
-
 // print the values of all four registers on the serial monitor
-void displayRegs(void)
-{
-    uint8_t config = mySensor.readConfig();
-    float C = mySensor.readTempC16(AMBIENT) / 16.0;
-    float F = mySensor.readTempF10(AMBIENT) / 10.0;
-    Serial << F("Config=") << (config < 16 ? F("0x0") : F("0x")) << _HEX(config) << F(", Ambient ") << C << F("C ") << F << 'F';
-    
-    C = mySensor.readTempC16(HYSTERESIS) / 16.0;
-    F = mySensor.readTempF10(HYSTERESIS) / 10.0;
-    Serial << F(", Hysteresis ") << C << F("C ") << F << 'F';
+void displayRegs(void) {
+  int32_t C;
+  uint8_t config;
+  MCP9800_config cfg;
+  
+  config = mySensor.readConfig(&cfg);
+  printf("Config=0x%x\n", config);
+  printf(" ONE_SHOT:%d\n", cfg.ONE_SHOT);
+  printf(" ADC_RESOLUTION:%d\n", cfg.ADC_RESOLUTION==3?12:(cfg.ADC_RESOLUTION==2?11:(cfg.ADC_RESOLUTION==1?10:9)));
+  printf(" FAULT_QUEUE:%d\n", cfg.FAULT_QUEUE);
+  printf(" ALERT_POLARITY:%d\n", cfg.ALERT_POLARITY);
+  printf(" INT_MODE:%d\n", cfg.INT_MODE);
+  printf(" SHUTDOWN:%d\n", cfg.SHUTDOWN);
 
-    C = mySensor.readTempC16(LIMITSET) / 16.0;
-    F = mySensor.readTempF10(LIMITSET) / 10.0;
-    Serial << F(", Limit-Set ") << C << F("C ") << F << 'F' << endl;
+  C = mySensor.readTemp(AMBIENT);
+  printf("Ambient %dC\n", C);
+
+  C = mySensor.readTemp(HYSTERESIS);
+  printf("Hysteresis %dC\n", C);
+
+  C = mySensor.readTemp(LIMITSET);
+  printf("Limit-Set %dC\n", C);
+}
+
+int main() {
+  printf("Start\n");
+  
+  // initialize the hardware
+  mySensor.init(&i2c, MCP9800_ADDRESS8BIT);
+
+  // max resolution, 0.0625 °C
+  mySensor.writeConfig(ADC_RES_12BITS);
+
+  // print the current register values
+  displayRegs();
+  printf("\n");
+
+  mySensor.writeTempx(HYSTERESIS, 1.5f);   // almost freezing - use float number with 'real' value
+  mySensor.writeTempx(LIMITSET, 1000000);  // boiling - use int number with temperatur*10000
+  
+  printf("HYSTERESIS %d\n", mySensor.readTemp(HYSTERESIS));
+  printf("LIMITSET %d\n", mySensor.readTemp(LIMITSET));
+
+  while(true) {  
+    int C = mySensor.readTemp(AMBIENT);
+    printf("Ambient %dC %fC\n", mySensor.readTemp(AMBIENT), mySensor.readTempF(AMBIENT));
+    thread_sleep_for(2000);
+  }
 }
